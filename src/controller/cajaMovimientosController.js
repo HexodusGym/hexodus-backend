@@ -1,6 +1,6 @@
 import prisma from "../config/prisma.js";
 import { registrarLog } from "../services/auditoriaService.js";
-import { ahoraEnMerida, localAUTC, fechaStrAInicio, fechaStrAFin } from "../utils/timezone.js";
+import { ahoraEnMerida, localAUTC, fechaStrAInicio, fechaStrAFin, partesEnMerida } from "../utils/timezone.js";
 
 // REGISTRAR MOVIMIENTO MANUAL (Ingreso / Egreso)
 export const registrarMovimiento = async (req, res) => {
@@ -184,7 +184,11 @@ export const listarMovimientos = async (req, res) => {
             }),
 
             prisma.cajaMovimiento.aggregate({
-                where: { ...whereClause, tipo: 'ingreso' },
+                where: { 
+                    ...whereClause, 
+                    tipo: 'ingreso',
+                    NOT: { concepto: { nombre: { contains: 'apertura', mode: 'insensitive' } } } // 🔥 ESCUDO APLICADO
+                },
                 _sum: { monto: true }
             }),
 
@@ -210,7 +214,7 @@ export const listarMovimientos = async (req, res) => {
 
         // Formatear la tabla
         const dataFormateada = movimientosRaw.map(mov => {
-            let metodoPagoStr = "N/A";
+            let metodoPagoStr = "Efectivo"; 
             let notaLimpia = mov.nota || 'Sin notas adicionales';
 
             const match = notaLimpia.match(/\[Pago: ID (\d+)\]/);
@@ -223,10 +227,13 @@ export const listarMovimientos = async (req, res) => {
                 notaLimpia = notaLimpia.replace(/\[Pago: ID \d+\]\s*-?\s*/, '').trim();
             }
 
+            const p = partesEnMerida(mov.fecha);
+            const fechaLocalExacta = `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}T${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}:${String(p.second).padStart(2, '0')}`;
+
             return {
                 id: mov.id,
                 folio: `MOV-${mov.id.toString().padStart(4, '0')}`,
-                fecha_hora: mov.fecha,
+                fecha_hora: fechaLocalExacta,
                 tipo: mov.tipo === 'ingreso' ? 'Ingreso' : 'Egreso',
                 concepto: mov.concepto.nombre,
                 nota_movimiento: notaLimpia || mov.concepto.nombre,
@@ -311,13 +318,19 @@ export const obtenerComparacionMovimientos = async (req, res) => {
         const [agrupacionActual, agrupacionAnterior] = await Promise.all([
             prisma.cajaMovimiento.groupBy({
                 by: ['tipo'],
-                where: { fecha: { gte: gteActual, lte: lteActual } },
+                where: { 
+                    fecha: { gte: gteActual, lte: lteActual },
+                    NOT: { concepto: { nombre: { contains: 'apertura', mode: 'insensitive' } } } // 🔥 ESCUDO APLICADO
+                },
                 _sum: { monto: true },
                 _count: { _all: true }
             }),
             prisma.cajaMovimiento.groupBy({
                 by: ['tipo'],
-                where: { fecha: { gte: gteAnterior, lte: lteAnterior } },
+                where: { 
+                    fecha: { gte: gteAnterior, lte: lteAnterior },
+                    NOT: { concepto: { nombre: { contains: 'apertura', mode: 'insensitive' } } } // 🔥 ESCUDO APLICADO
+                },
                 _sum: { monto: true },
                 _count: { _all: true }
             })
