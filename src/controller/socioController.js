@@ -1,19 +1,36 @@
 import prisma from "../config/prisma.js";
 import crypto from "crypto";
 import { registrarLog } from "../services/auditoriaService.js";
-import { ahoraEnMerida } from "../utils/timezone.js";
+import { ahoraEnMerida, fechaStrAInicio, partesEnMerida } from "../utils/timezone.js";
 
 // AYUDANTES DE VALIDACIÓN GLOBALES
 const validarFecha = (fechaStr, nombreCampo) => {
     if (!fechaStr) return null;
-    const fecha = new Date(fechaStr);
+    
+    let fecha;
+    
+    // Si el front manda solo la fecha "YYYY-MM-DD" o la medianoche UTC "T00:00:00"
+    if (typeof fechaStr === 'string' && (fechaStr.length === 10 || fechaStr.includes('T00:00:00'))) {
+        const soloFecha = fechaStr.split('T')[0]; // Extrae solo "2026-03-18"
+        fecha = fechaStrAInicio(soloFecha); // Lo convierte a la medianoche EXACTA de Campeche
+    } else {
+        fecha = new Date(fechaStr); // Si trae hora específica (ej. registro biométrico), la respeta
+    }
+
     if (isNaN(fecha.getTime())) throw new Error(`UX_ERROR:La fecha proporcionada para '${nombreCampo}' es inválida.`);
     
-    // Evitar fechas extremadamente raras por errores de tipeo del usuario (ej. año 0024 en vez de 2024)
+    // Evitar fechas extremadamente raras por errores de tipeo
     const year = fecha.getFullYear();
     if (year < 2000 || year > 2100) throw new Error(`UX_ERROR:La fecha para '${nombreCampo}' está fuera de un rango aceptable.`);
     
     return fecha;
+};
+
+// HELPER: Forzar salida de fecha a string local sin la 'Z' (Evita el salto de días en el Frontend)
+const formatoLocalISO = (date) => {
+    if (!date) return null;
+    const p = partesEnMerida(date);
+    return `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}T${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}:${String(p.second).padStart(2, '0')}`;
 };
 
 const validarMetodoPago = async (tx, metodoId) => {
@@ -66,7 +83,7 @@ export const cotizarMembresia = async (req, res) => {
         }
 
         // Calcular Fechas blindadas
-        const inicio = new Date(fecha_inicio);
+        const inicio = validarFecha(fecha_inicio, 'Inicio de Cotización');
         if (isNaN(inicio.getTime())) return res.status(400).json({ error: "La fecha de inicio es inválida." });
         
         const fin = new Date(inicio);
@@ -84,8 +101,8 @@ export const cotizarMembresia = async (req, res) => {
                 plan_id: plan.id,
                 nombre_plan: plan.nombre,
                 duracion_dias: plan.duracionDias,
-                fecha_inicio: inicio.toISOString(),
-                fecha_vencimiento: fin.toISOString(),
+                fecha_inicio: formatoLocalISO(inicio),     
+                fecha_vencimiento: formatoLocalISO(fin),
                 desglose_cobro: {
                     precio_regular: parseFloat(plan.precioBase),
                     tiene_descuento: esOfertaActiva,
@@ -216,7 +233,7 @@ export const crearSocio = async (req, res) => {
                             monto: precioFinal,
                             referenciaTipo: 'membresia',
                             referenciaId: membresiaAsignada.id,
-                            nota: `Suscripción inicial de socio ${nuevoSocio.codigoSocio}`
+                            nota: `[Pago: ID ${metodoPagoIdValido}] Suscripción inicial de socio ${nuevoSocio.codigoSocio}`
                         }
                     });
                 }
@@ -354,7 +371,7 @@ export const listarSocios = async (req, res) => {
                 genero: socio.genero || 'N/A',
                 contacto: { telefono: socio.telefono, correo: socio.correo },
                 membresia: membresiaActual ? membresiaActual.plan.nombre : 'Sin membresía',
-                vencimiento: membresiaActual ? membresiaActual.fechaFin : null,
+                vencimiento: membresiaActual ? formatoLocalISO(membresiaActual.fechaFin) : null,
                 vigencia: membresiaActual ? (new Date(membresiaActual.fechaFin) >= hoy ? 'Activa' : 'Vencida') : 'N/A',
                 estado_pago: membresiaActual ? membresiaActual.estadoPago : 'N/A',
                 estado_contrato: contratoActual ? (contratoActual.status === 'vigente') : false
@@ -426,7 +443,7 @@ export const obtenerSocio = async (req, res) => {
             fecha_fin_contrato: contratoActual ? contratoActual.fechaFin : null,       
             biometrico_rostro: socio.faceEncoding ? true : false,
             biometrico_huella: socio.huellaTemplate ? true : false,
-            fecha_registro: socio.createdAt
+            fecha_registro: formatoLocalISO(socio.createdAt)
         };
 
         res.status(200).json({ message: "Datos del socio obtenidos correctamente", data: dataFormateada });
@@ -581,7 +598,7 @@ export const actualizarSocio = async (req, res) => {
                     await tx.cajaMovimiento.create({
                         data: {
                             corteId: cajaAbierta.id, usuarioId: req.user.id, conceptoId: conceptoMembresia.id,
-                            tipo: 'ingreso', monto: monto, referenciaTipo: 'membresia', referenciaId: membresiaId, nota: nota
+                            tipo: 'ingreso', monto: monto, referenciaTipo: 'membresia', referenciaId: membresiaId, nota: `[Pago: ID ${await obtenerMetodoPagoIdValido()}] ${nota}`
                         }
                     });
                 };
@@ -613,7 +630,7 @@ export const actualizarSocio = async (req, res) => {
                             monto: Math.abs(monto), 
                             referenciaTipo: 'membresia', 
                             referenciaId: membresiaId, 
-                            nota: nota
+                            nota: `[Pago: ID ${await obtenerMetodoPagoIdValido()}] ${nota}`
                         }
                     });
                 };
@@ -800,8 +817,8 @@ export const obtenerHistorialMembresias = async (req, res) => {
         const dataFormateada = membresias.map(m => ({
             id_membresia_socio: m.id,
             plan: m.plan.nombre,
-            fecha_inicio: m.fechaInicio,
-            fecha_fin: m.fechaFin,
+            fecha_inicio: formatoLocalISO(m.fechaInicio),
+            fecha_fin: formatoLocalISO(m.fechaFin),
             status_vigencia: m.status, // activa, vencida, cancelada
             estado_pago: m.estadoPago, // pagado, sin_pagar
             precio_cobrado: m.precioCongelado,
@@ -810,7 +827,7 @@ export const obtenerHistorialMembresias = async (req, res) => {
                 id_pago: p.id,
                 monto: p.monto,
                 metodo_pago: p.metodoPago.nombre,
-                fecha_pago: p.pagadoEn,
+                fecha_pago: formatoLocalISO(p.pagadoEn),
                 recibido_por: p.cobrador?.nombreCompleto || 'Sistema'
             }))
         }));
@@ -891,7 +908,7 @@ export const pagarMembresiaPendiente = async (req, res) => {
                     monto: membresia.precioCongelado,
                     referenciaTipo: 'membresia',
                     referenciaId: membresia.id,
-                    nota: `Pago de membresía atrasada. Socio: ${membresia.socio.codigoSocio}`
+                    nota: `[Pago: ID ${metodoPagoIdValido}] Pago de membresía atrasada. Socio: ${membresia.socio.codigoSocio}`
                 }
             });
 
@@ -995,7 +1012,7 @@ export const renovarMembresia = async (req, res) => {
                     monto: precioFinal,
                     referenciaTipo: 'membresia',
                     referenciaId: nuevaMembresia.id,
-                    nota: `Renovación de socio ${socio.codigoSocio} - Plan: ${plan.nombre}`
+                    nota: `[Pago: ID ${metodoPagoIdValido}] Renovación de socio ${socio.codigoSocio} - Plan: ${plan.nombre}`
                 }
             });
 
