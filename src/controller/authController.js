@@ -27,8 +27,14 @@ export const login = async (req, res) => {
             return res.status(403).json({ error: "Usuario inactivo. Contacte al administrador." });
         }
 
+        // Actualizar el reloj de "Último Acceso" en la base de datos
+        await prisma.usuario.update({
+            where: { id: usuario.id },
+            data: { ultimoAcceso: new Date() }
+        });
+
         // Parsear permisos JSON de forma segura
-        const permisosJson = typeof usuario.rol.permisos === 'string' 
+        const permisosJson = typeof usuario.rol.permisos === 'string'
             ? JSON.parse(usuario.rol.permisos) 
             : (usuario.rol.permisos || {});
 
@@ -49,7 +55,7 @@ export const login = async (req, res) => {
 
         await registrarLog({
             req,
-            usuarioId: usuario.id, // 🔥 Le pasamos el ID explícitamente aquí
+            usuarioId: usuario.id, // Le pasamos el ID explícitamente aquí
             accion: 'login',
             modulo: 'seguridad',
             detalles: `Inicio de sesión exitoso del usuario: ${usuario.username}`
@@ -106,8 +112,8 @@ export const forgotPassword = async (req, res) => {
 
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
         
-        // Asumiendo que tu archivo HTML está en esa ruta
-        const resetUrl = `${frontendUrl}/views/recuperar-password.html?token=${resetToken}`;
+        // Ruta limpia para Next.js
+        const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
 
         const message = `Has solicitado restablecer tu contraseña.`;
 

@@ -407,3 +407,72 @@ export const obtenerComparacionMovimientos = async (req, res) => {
         res.status(500).json({ error: "Error interno al generar las comparaciones." });
     }
 };
+
+
+// ELIMINAR MOVIMIENTO DE CAJA (Borrado Físico con Reglas Contables)
+export const eliminarMovimiento = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (isNaN(id)) {
+            return res.status(400).json({ error: "ID de movimiento inválido." });
+        }
+
+        const movimientoId = parseInt(id);
+
+        // 1. Buscamos el movimiento con su Corte y Concepto
+        const movimiento = await prisma.cajaMovimiento.findUnique({
+            where: { id: movimientoId },
+            include: { corte: true, concepto: true }
+        });
+
+        if (!movimiento) {
+            return res.status(404).json({ error: "Movimiento no encontrado." });
+        }
+
+        // 🛡️ REGLA CONTABLE 1: Prohibido alterar la historia antigua
+        if (movimiento.corte && movimiento.corte.status === 'cerrado') {
+            return res.status(403).json({ 
+                error: "Operación denegada. No puedes eliminar un movimiento que pertenece a un corte de caja cerrado. La contabilidad de ese turno ya fue sellada." 
+            });
+        }
+
+        // 🛡️ REGLA CONTABLE 2: Integridad de Doble Partida (No romper ventas ni membresías)
+        // Solo permitimos borrar referencias tipo 'otro' (manuales) o 'ajuste'.
+        if (movimiento.referenciaTipo === 'venta' || movimiento.referenciaTipo === 'membresia') {
+            return res.status(403).json({ 
+                error: `Operación denegada. Este es un movimiento automático generado por una ${movimiento.referenciaTipo.toUpperCase()}. Solo se pueden eliminar movimientos manuales.` 
+            });
+        }
+
+        // 🛡️ REGLA CONTABLE 3: Proteger el Fondo de Caja (NUEVO ESCUDO)
+        const esApertura = movimiento.concepto.nombre.toLowerCase().includes('apertura');
+        if (esApertura) {
+            return res.status(403).json({
+                error: "Operación denegada. No puedes eliminar el movimiento de Apertura de Caja. Si cometiste un error con el monto inicial, debes cerrar la caja actual y abrir una nueva."
+            });
+        }
+
+        // 2. Si pasó las reglas de oro, lo borramos físicamente de la base de datos
+        await prisma.cajaMovimiento.delete({
+            where: { id: movimientoId }
+        });
+
+        // 3. Dejamos el rastro en la bitácora de auditoría
+        await registrarLog({
+            req,
+            accion: 'eliminar',
+            modulo: 'movimientos',
+            registroId: movimientoId,
+            detalles: `Se eliminó físicamente un movimiento manual de ${movimiento.tipo} por $${movimiento.monto} (Concepto: ${movimiento.concepto.nombre})`
+        });
+
+        res.status(200).json({
+            message: "Movimiento eliminado exitosamente. Los saldos del dashboard y la caja se han ajustado automáticamente."
+        });
+
+    } catch (error) {
+        console.error("Error al eliminar movimiento de caja:", error);
+        res.status(500).json({ error: "Error interno al intentar eliminar el movimiento." });
+    }
+};
