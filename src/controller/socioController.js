@@ -552,6 +552,17 @@ export const actualizarSocio = async (req, res) => {
                     where: { socioId: socioId }, orderBy: { id: 'desc' }
                 });
 
+                // 🛡️ ESCUDO ANTI-FUGAS DE DINERO (BLINDADO POR FECHA) 🛡️
+                if (membresiaActual) {
+                    const { year, month, day } = ahoraEnMerida();
+                    const hoy = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+                    const estaVencidaPorFecha = new Date(membresiaActual.fechaFin) < hoy;
+
+                    if (membresiaActual.status === 'vencida' || membresiaActual.status === 'cancelada' || estaVencidaPorFecha) {
+                        throw new Error("UX_ERROR:Operación denegada. No puedes editar ni generar devoluciones sobre una membresía que ya expiró. Por favor, utiliza el botón de 'Renovar'.");
+                    }
+                }
+
                 const planNuevo = await tx.membresiaPlan.findUnique({ where: { id: nuevoPlanId } });
                 if (!planNuevo) throw new Error("NOT_FOUND:El plan de membresía seleccionado no existe.");
 

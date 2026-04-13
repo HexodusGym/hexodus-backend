@@ -2,11 +2,19 @@ import prisma from "../config/prisma.js";
 import { ahoraEnMerida, localAUTC, fechaStrAInicio, fechaStrAFin, fechaUTCADiaStr, fechaUTCAMesStr } from "../utils/timezone.js";
 
 const mapaPeriodos = {
+    'dia': 'Hoy',
     'hoy': 'Hoy',
+    'semana': 'Esta Semana',
     'esta semana': 'Esta Semana',
+    'mes': 'Este Mes',
     'este mes': 'Este Mes',
+    'trimestre': 'Este Trimestre',
     'este trimestre': 'Este Trimestre',
+    'semestre': 'Este Semestre',
     'este semestre': 'Este Semestre',
+    'anual': 'Este Ano',
+    'ano': 'Este Ano',
+    'año': 'Este Ano',
     'este año': 'Este Ano',
     'este ano': 'Este Ano',
     'personalizado': 'Personalizado'
@@ -94,12 +102,27 @@ export const obtenerResumenFinanciero = async (req, res) => {
             sociosActivos, transaccionesVentas, transaccionesGastos,
             movimientosGastos, membresiasPeriodo
         ] = await Promise.all([
-            prisma.cajaMovimiento.aggregate({ where: { tipo: 'ingreso', fecha: { gte: gteActual, lte: lteActual } }, _sum: { monto: true } }),
+            // Sumamos todos los ingresos, excepto la apertura
+            prisma.cajaMovimiento.aggregate({ 
+                where: { 
+                    tipo: 'ingreso', 
+                    fecha: { gte: gteActual, lte: lteActual },
+                    NOT: { concepto: { nombre: { contains: 'apertura', mode: 'insensitive' } } }
+                }, 
+                _sum: { monto: true } 
+            }),
             prisma.cajaMovimiento.aggregate({ where: { tipo: 'gasto', fecha: { gte: gteActual, lte: lteActual } }, _sum: { monto: true } }),
             prisma.cajaMovimiento.aggregate({ where: { tipo: 'ingreso', referenciaTipo: 'membresia', fecha: { gte: gteActual, lte: lteActual } }, _sum: { monto: true } }),
             prisma.cajaMovimiento.aggregate({ where: { tipo: 'ingreso', referenciaTipo: 'venta', fecha: { gte: gteActual, lte: lteActual } }, _sum: { monto: true } }),
             
-            prisma.cajaMovimiento.aggregate({ where: { tipo: 'ingreso', fecha: { gte: gteAnterior, lte: lteAnterior } }, _sum: { monto: true } }),
+            prisma.cajaMovimiento.aggregate({ 
+                where: { 
+                    tipo: 'ingreso', 
+                    fecha: { gte: gteAnterior, lte: lteAnterior },
+                    NOT: { concepto: { nombre: { contains: 'apertura', mode: 'insensitive' } } }
+                }, 
+                _sum: { monto: true } 
+            }),
             prisma.cajaMovimiento.aggregate({ where: { tipo: 'gasto', fecha: { gte: gteAnterior, lte: lteAnterior } }, _sum: { monto: true } }),
             prisma.cajaMovimiento.aggregate({ where: { tipo: 'ingreso', referenciaTipo: 'membresia', fecha: { gte: gteAnterior, lte: lteAnterior } }, _sum: { monto: true } }),
             prisma.cajaMovimiento.aggregate({ where: { tipo: 'ingreso', referenciaTipo: 'venta', fecha: { gte: gteAnterior, lte: lteAnterior } }, _sum: { monto: true } }),
@@ -279,8 +302,12 @@ export const obtenerGraficasFinancieras = async (req, res) => {
 
         // B. CONSULTAS A LA BD 
         const [movimientos, membresias] = await Promise.all([
+            // ESCUDO GRÁFICAS: Ignoramos la apertura para no inflar la tendencia visual
             prisma.cajaMovimiento.findMany({ 
-                where: { fecha: { gte: gteActual, lte: lteActual } },
+                where: { 
+                    fecha: { gte: gteActual, lte: lteActual },
+                    NOT: { concepto: { nombre: { contains: 'apertura', mode: 'insensitive' } } }
+                },
                 include: { concepto: true }
             }),
             prisma.membresiaSocio.findMany({ 

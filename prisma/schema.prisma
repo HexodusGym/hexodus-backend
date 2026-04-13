@@ -173,6 +173,7 @@ model Usuario {
   reportesFinancieros  ReporteFinanciero[]  @relation("UsuarioReporte")
   alertasVistas        AlertaSistema[] @relation("UsuarioAlertaVista")
   alertasResueltas     AlertaSistema[] @relation("UsuarioAlertaResuelta")
+  configuracionesActualizadas ConfiguracionSistema[] @relation("UsuarioConfiguracion")
 
   @@map("usuarios")
 }
@@ -628,23 +629,32 @@ model AuditoriaLog {
 }
 
 model ReporteFinanciero {
-  id              Int      @id @default(autoincrement()) @map("reporte_id")
-  nombre          String   @db.VarChar(120)
-  descripcion     String?  @db.VarChar(255)
-  tipo            String   @db.VarChar(60) 
-  formato         String   @db.VarChar(20) 
-  fechaInicio     DateTime @map("fecha_inicio")
-  fechaFin        DateTime @map("fecha_fin")
-  incluirGraficos Boolean  @default(false) @map("incluir_graficos")
-  incluirDetalles Boolean  @default(false) @map("incluir_detalles")
-  estado          String   @default("Exitoso") @db.VarChar(40) 
-  archivoUrl      String?  @map("archivo_url") @db.VarChar(255)
-  generadoEn      DateTime @default(now()) @map("generado_en")
+  id             Int      @id @default(autoincrement())
+  uuidReporte    String   @unique @default(uuid()) @map("uuid_reporte")
+  nombre         String   @db.VarChar(120)
+  descripcion    String?  @db.Text
+  tipoReporte    String   @map("tipo_reporte") @db.VarChar(50) 
+  formato        String   @db.VarChar(10) // PDF, XLSX, CSV
+  fechaInicio    DateTime @map("fecha_inicio")
+  fechaFin       DateTime @map("fecha_fin")
   
-  // Relación con Usuario
-  usuarioId       Int      @map("usuario_id")
-  usuario         Usuario  @relation("UsuarioReporte", fields: [usuarioId], references: [id])
+  // Opciones de configuración
+  incluirGraficos Boolean @default(false) @map("incluir_graficos")
+  incluirDetalles Boolean @default(true) @map("incluir_detalles")
+  
+  // Archivo y Estado
+  archivoUrl     String?  @map("archivo_url") @db.Text
+  estado         String   @default("completado") @db.VarChar(20) // 🔥 NUEVO: procesando, completado, error
+  
+  isDeleted      Boolean  @default(false) @map("is_deleted")
+  
+  usuarioId      Int      @map("usuario_id")
+  createdAt      DateTime @default(now()) @map("created_at")
 
+  usuario        Usuario  @relation("UsuarioReporte", fields: [usuarioId], references: [id])
+
+  @@index([fechaInicio, fechaFin])
+  @@index([estado])
   @@map("reportes_financieros")
 }
 
@@ -864,4 +874,32 @@ model ConfiguracionAlerta {
   updatedAt                DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("configuracion_alertas")
+}
+
+// ==========================================================
+// 17. MÓDULO: CONFIGURACIÓN GLOBAL (APARIENCIA Y TICKET)
+// ==========================================================
+
+model ConfiguracionSistema {
+  id                          Int       @id @default(1) // Singleton (Solo habrá un registro)
+  colorPrincipal              String    @map("color_principal") @db.VarChar(7)
+  colorSecundario             String    @map("color_secundario") @db.VarChar(7)
+  modoTema                    String    @map("modo_tema") @db.VarChar(10)
+  nombreSistema               String    @map("nombre_sistema") @db.VarChar(80)
+  logoSistema                 String?   @map("logo_sistema") @db.Text
+
+  gimnasioNombre              String    @map("gimnasio_nombre") @db.VarChar(120)
+  gimnasioDomicilio           String    @map("gimnasio_domicilio") @db.VarChar(255)
+  gimnasioTelefono            String    @map("gimnasio_telefono") @db.VarChar(30)
+  gimnasioRFC                 String    @map("gimnasio_rfc") @db.VarChar(13)
+  gimnasioLogo                String?   @map("gimnasio_logo") @db.Text
+  ticketFooter                String    @map("ticket_footer") @db.VarChar(100)
+  ticketMensajeAgradecimiento String    @map("ticket_mensaje_agradecimiento") @db.VarChar(200)
+
+  updatedAt                   DateTime  @default(now()) @updatedAt @map("updated_at")
+  updatedBy                   Int?      @map("updated_by")
+
+  usuario                     Usuario?  @relation("UsuarioConfiguracion", fields: [updatedBy], references: [id])
+
+  @@map("configuracion_sistema")
 }

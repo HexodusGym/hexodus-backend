@@ -2,11 +2,19 @@ import prisma from "../config/prisma.js";
 import { ahoraEnMerida, localAUTC, fechaStrAInicio, fechaStrAFin } from "../utils/timezone.js";
 
 const mapaPeriodos = {
+    'dia': 'Hoy',
     'hoy': 'Hoy',
+    'semana': 'Esta Semana',
     'esta semana': 'Esta Semana',
+    'mes': 'Este Mes',
     'este mes': 'Este Mes',
+    'trimestre': 'Este Trimestre',
     'este trimestre': 'Este Trimestre',
+    'semestre': 'Este Semestre',
     'este semestre': 'Este Semestre',
+    'anual': 'Este Ano',
+    'ano': 'Este Ano',
+    'año': 'Este Ano',
     'este ano': 'Este Ano',
     'personalizado': 'Personalizado'
 };
@@ -132,13 +140,13 @@ export const obtenerComparacionesFinancieras = async (req, res) => {
             ventasAnterior, gastosAnterior, membresiasAnterior,
             membresiasAgrupadas
         ] = await Promise.all([
-            prisma.cajaMovimiento.aggregate({ where: { tipo: 'ingreso', referenciaTipo: 'venta', fecha: { gte: gteActual, lte: lteActual } }, _sum: { monto: true } }),
+            prisma.cajaMovimiento.aggregate({ where: { tipo: 'ingreso', referenciaTipo: 'venta', fecha: { gte: gteActual, lte: lteActual }, NOT: { concepto: { nombre: { contains: 'apertura', mode: 'insensitive' } } } }, _sum: { monto: true } }),
             prisma.cajaMovimiento.aggregate({ where: { tipo: 'gasto', fecha: { gte: gteActual, lte: lteActual } }, _sum: { monto: true } }),
-            prisma.cajaMovimiento.aggregate({ where: { tipo: 'ingreso', referenciaTipo: 'membresia', fecha: { gte: gteActual, lte: lteActual } }, _sum: { monto: true } }),
+            prisma.cajaMovimiento.aggregate({ where: { tipo: 'ingreso', referenciaTipo: 'membresia', fecha: { gte: gteActual, lte: lteActual }, NOT: { concepto: { nombre: { contains: 'apertura', mode: 'insensitive' } } } }, _sum: { monto: true } }),
             
-            prisma.cajaMovimiento.aggregate({ where: { tipo: 'ingreso', referenciaTipo: 'venta', fecha: { gte: gteAnterior, lte: lteAnterior } }, _sum: { monto: true } }),
+            prisma.cajaMovimiento.aggregate({ where: { tipo: 'ingreso', referenciaTipo: 'venta', fecha: { gte: gteAnterior, lte: lteAnterior }, NOT: { concepto: { nombre: { contains: 'apertura', mode: 'insensitive' } } } }, _sum: { monto: true } }),
             prisma.cajaMovimiento.aggregate({ where: { tipo: 'gasto', fecha: { gte: gteAnterior, lte: lteAnterior } }, _sum: { monto: true } }),
-            prisma.cajaMovimiento.aggregate({ where: { tipo: 'ingreso', referenciaTipo: 'membresia', fecha: { gte: gteAnterior, lte: lteAnterior } }, _sum: { monto: true } }),
+            prisma.cajaMovimiento.aggregate({ where: { tipo: 'ingreso', referenciaTipo: 'membresia', fecha: { gte: gteAnterior, lte: lteAnterior }, NOT: { concepto: { nombre: { contains: 'apertura', mode: 'insensitive' } } } }, _sum: { monto: true } }),
 
             // Para sacar el "Plan más popular" de los insights
             prisma.membresiaSocio.findMany({ where: { fechaInicio: { gte: gteActual, lte: lteActual } }, include: { plan: true } })
