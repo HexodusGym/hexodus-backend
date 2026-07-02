@@ -5,9 +5,10 @@ import { registrarLog } from "../services/auditoriaService.js";
 import {
   ahoraEnMerida,
   fechaStrAInicio,
-  localAUTC,
   partesEnMerida,
 } from "../utils/timezone.js";
+import { inicioDiaMembresia } from "../utils/membresiaVigencia.js";
+import { calcularFechaFinMembresia } from "../utils/membresiaFechas.js";
 
 // AYUDANTES DE VALIDACIÓN GLOBALES
 const validarFecha = (fechaStr, nombreCampo) => {
@@ -60,39 +61,6 @@ const normalizarTexto = (value) =>
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase();
-
-const ultimoDiaDelMes = (year, month) => new Date(Date.UTC(year, month, 0)).getUTCDate();
-
-const agregarMesesCalendario = (fechaInicio, meses, diaCorte) => {
-  const inicio = partesEnMerida(fechaInicio);
-  const totalMeses = inicio.month - 1 + meses;
-  const targetYear = inicio.year + Math.floor(totalMeses / 12);
-  const targetMonth = (totalMeses % 12) + 1;
-  const targetDay = Math.min(diaCorte || inicio.day, ultimoDiaDelMes(targetYear, targetMonth));
-
-  return localAUTC(
-    targetYear,
-    targetMonth,
-    targetDay,
-    inicio.hour,
-    inicio.minute,
-    inicio.second,
-    0,
-  );
-};
-
-const calcularFechaFinMembresia = (fechaInicio, duracionDias, diaCorte) => {
-  const dias = Number(duracionDias);
-
-  if (Number.isInteger(dias) && dias > 0) {
-    if (dias % 365 === 0) return agregarMesesCalendario(fechaInicio, (dias / 365) * 12, diaCorte);
-    if (dias % 30 === 0) return agregarMesesCalendario(fechaInicio, dias / 30, diaCorte);
-  }
-
-  const fin = new Date(fechaInicio);
-  fin.setDate(fin.getDate() + dias);
-  return fin;
-};
 
 const obtenerHoyInicioMerida = () => {
   const { year, month, day } = ahoraEnMerida();
@@ -231,14 +199,14 @@ const validarMetodoPago = async (tx, metodoId) => {
 };
 
 const recalcularStatusSocio = async (tx, socioId) => {
-  const hoy = new Date();
+  const inicioHoy = inicioDiaMembresia();
 
   const membresiaVigentePagada = await tx.membresiaSocio.findFirst({
     where: {
       socioId,
       status: "activa",
       estadoPago: "pagado",
-      fechaFin: { gte: hoy },
+      fechaFin: { gte: inicioHoy },
     },
     select: { id: true },
   });
@@ -1134,8 +1102,7 @@ export const actualizarSocio = async (req, res) => {
 
           // 🛡️ ESCUDO ANTI-FUGAS DE DINERO (BLINDADO POR FECHA) 🛡️
           if (membresiaActual) {
-            const { year, month, day } = ahoraEnMerida();
-            const hoy = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+            const hoy = inicioDiaMembresia();
             const estaVencidaPorFecha =
               new Date(membresiaActual.fechaFin) < hoy;
 
@@ -1744,13 +1711,9 @@ export const renovarMembresia = async (req, res) => {
         }
       }
 
-      const diaCorteActual = membresiaActual
-        ? partesEnMerida(membresiaActual.fechaInicio).day
-        : undefined;
       const fechaFinReal = calcularFechaFinMembresia(
         fechaInicioReal,
         plan.duracionDias,
-        diaCorteActual,
       );
 
       const hoy = new Date();
