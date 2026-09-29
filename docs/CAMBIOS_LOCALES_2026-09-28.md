@@ -1,10 +1,11 @@
 # Cambios locales del backend — 28 de septiembre de 2026
 
 Esta entrega reúne las diferencias funcionales de la copia local frente a
-`HexodusGym/hexodus-backend:main`, commit
-`815c319080a9e357fa08bacc099eff7fc6ad6ae8`. La copia local no tenía metadatos
-Git; se vinculó con ese historial y se conservaron los finales de línea del
-repositorio para evitar cambios de formato en archivos sin cambios funcionales.
+`JARB-s-Solutions/hexodus-backend:main`, commit
+`357969d760c30b2f6ee3bb271c5831febf404213`. Se creó una rama directamente
+sobre el historial del repositorio de desarrollo y se incorporaron las
+diferencias funcionales de la copia local, conservando los finales de línea
+del repositorio para evitar cambios de formato en archivos sin cambios funcionales.
 
 ## Exportación de asistencias
 
@@ -92,5 +93,6 @@ Prisma ni migraciones SQL respecto del commit base.
   (1 baja, 4 moderadas y 7 altas). Esta entrega conserva las versiones
   recibidas y no aplica actualizaciones automáticas de dependencias.
 
-La entrega se presenta mediante una rama nueva y un pull request hacia
-`main`; el merge queda pendiente de revisión del propietario.
+La entrega se publica directamente en `JARB-s-Solutions/hexodus-backend`,
+en la rama `codex/asistencias-excel-desarrollo-2026-09-28`, mediante un pull
+request hacia `main`; el merge queda pendiente de revisión del propietario.
