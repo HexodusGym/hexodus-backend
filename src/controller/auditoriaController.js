@@ -6,7 +6,12 @@ export const listarLogs = async (req, res) => {
         const limit = 50;
         const skip = (page - 1) * limit;
 
-        const where = {};
+        // Los comprobantes técnicos biométricos viven en la bitácora para garantizar
+        // idempotencia, pero no deben aparecer como auditoría humana.
+        const where = { NOT: [
+            { id: { startsWith: "bio-event:" } },
+            { id: { startsWith: "bio-proof:" } },
+        ] };
         if (modulo) where.modulo = modulo;
         if (usuarioId) where.usuarioId = parseInt(usuarioId);
         if (accion) where.accion = accion;
