@@ -35,3 +35,7 @@ Las pruebas unitarias verifican firma HMAC, expiraci√≥n, permisos, plantillas XM
 
 La configuraci√≥n de conexi√≥n de Prisma y el esquema de datos permanecen como estaban en `main`.
 
+
+## Despliegue
+
+El deployment de producciÛn debe usar este commit de main y las rutas bajo /api. Este cambio documental no modifica cÛdigo, Prisma ni la base de datos; se incluye para generar un nuevo deployment verificable.
