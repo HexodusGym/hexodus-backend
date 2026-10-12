@@ -1,6 +1,20 @@
 import prisma from "../config/prisma.js";
 import { rangoDiaHoy, fechaStrAInicio, fechaStrAFin, horaStringMerida, fechaUTCAISOEnMerida, fechaUTCADiaStr } from "../utils/timezone.js";
 import { evaluarAccesoSocio } from "../utils/membresiaVigencia.js";
+import { createBiometricService } from "../services/biometriaService.js";
+import { exigirPermisosActuales } from "../middlewares/biometriaMiddleware.js";
+import { biometricErrorResponse, legacyEnabled, validateLegacyAttendance, BiometricError } from "../utils/biometriaContrato.js";
+
+const biometria = createBiometricService({ db: prisma, requirePermissions: exigirPermisosActuales });
+
+export const crearSesionBiometrica = async (req, res) => {
+    try {
+        res.setHeader("Cache-Control", "no-store");
+        return res.status(200).json(await biometria.session(req));
+    } catch (error) {
+        if (!biometricErrorResponse(res, error)) res.status(503).json({ success: false, message: "No se pudo iniciar la sesiÃ³n del motor." });
+    }
+};
 
 const calcularDistancia = (desc1, desc2) => {
     if (!desc1 || !desc2 || desc1.length !== desc2.length) return 1.0; 
@@ -44,7 +58,7 @@ export const validarAsistenciaFacial = async (req, res) => {
         const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
         if (!faceDescriptor || !Array.isArray(faceDescriptor) || faceDescriptor.length !== 128) {
-            return res.status(400).json({ success: false, message: "Descriptor facial inválido." });
+            return res.status(400).json({ success: false, message: "Descriptor facial invÃ¡lido." });
         }
 
         const sociosConRostro = await prisma.socio.findMany({
@@ -84,7 +98,7 @@ export const validarAsistenciaFacial = async (req, res) => {
             });
 
             return res.status(200).json({
-                success: true, // El request fue exitoso, la decisión de negocio fue "denegado"
+                success: true, // El request fue exitoso, la decisiÃ³n de negocio fue "denegado"
                 message: "Acceso denegado",
                 data: {
                     decision: "denegado",
@@ -111,7 +125,7 @@ export const validarAsistenciaFacial = async (req, res) => {
             await sincronizarEstadosVigentes(bestMatch, membresiaActual);
         }
 
-        // REGISTRAR EN BITÁCORA (Tanto permitidos como denegados para trazabilidad)
+        // REGISTRAR EN BITÃCORA (Tanto permitidos como denegados para trazabilidad)
         const nuevoAcceso = await prisma.acceso.create({
             data: {
                 socioId: bestMatch.id,
@@ -138,7 +152,7 @@ export const validarAsistenciaFacial = async (req, res) => {
                     id: bestMatch.id,
                     codigo_socio: bestMatch.codigoSocio,
                     nombre_completo: bestMatch.nombreCompleto,
-                    // Se agrega la foto de perfil si está disponible, de lo contrario se devuelve null
+                    // Se agrega la foto de perfil si estÃ¡ disponible, de lo contrario se devuelve null
                     foto_perfil_url: bestMatch.fotoUrl || null,
                     membresia: membresiaActual ? membresiaActual.plan.nombre : 'Sin plan',
                     fecha_fin_membresia: membresiaActual ? fechaUTCADiaStr(membresiaActual.fechaFin) : null,
@@ -155,7 +169,7 @@ export const validarAsistenciaFacial = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Error en validación biométrica:", error);
+        console.error("Error en validaciÃ³n biomÃ©trica:", error);
         res.status(500).json({ success: false, message: "Error interno del servidor." });
     }
 };
@@ -281,11 +295,11 @@ export const obtenerAsistenciasHoy = async (req, res) => {
             }
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: "Error al obtener asistencias del día." });
+        res.status(500).json({ success: false, message: "Error al obtener asistencias del dÃ­a." });
     }
 };
 
-// HISTORIAL DE UN SOCIO ESPECÍFICO
+// HISTORIAL DE UN SOCIO ESPECÃFICO
 export const obtenerAsistenciasSocio = async (req, res) => {
     try {
         const socioId = parseInt(req.params.id);
@@ -329,7 +343,7 @@ export const obtenerAsistenciasSocio = async (req, res) => {
     }
 };
 
-// REGISTRAR ASISTENCIA MANUAL (Desde Recepción)
+// REGISTRAR ASISTENCIA MANUAL (Desde RecepciÃ³n)
 export const registrarAsistenciaManual = async (req, res) => {
     try {
         const { clave, tipo = 'IN', notas } = req.body;
@@ -351,7 +365,7 @@ export const registrarAsistenciaManual = async (req, res) => {
         });
 
         if (!socio || socio.isDeleted) {
-            return res.status(404).json({ success: false, message: `No se encontró ningún socio con la clave: ${clave}` });
+            return res.status(404).json({ success: false, message: `No se encontrÃ³ ningÃºn socio con la clave: ${clave}` });
         }
 
         const evaluacionMembresia = evaluarAccesoSocio(socio, socio.membresias[0]);
@@ -378,7 +392,7 @@ export const registrarAsistenciaManual = async (req, res) => {
                 validado: true,
                 estadoAcceso: 'permitido',
                 motivoCodigo: tipo === 'IN' ? evaluacionMembresia.motivoCodigo : 'ok',
-                motivo: notas || (tipo === 'IN' ? evaluacionMembresia.motivoTexto : 'Salida manual por recepción'),
+                motivo: notas || (tipo === 'IN' ? evaluacionMembresia.motivoTexto : 'Salida manual por recepciÃ³n'),
                 usuarioId: usuarioId
             }
         });
@@ -407,6 +421,11 @@ export const registrarAsistenciaManual = async (req, res) => {
 // SINCRONIZAR HUELLAS (Kiosko Local)
 export const sincronizarHuellas = async (req, res) => {
     try {
+        res.setHeader("Cache-Control", "no-store");
+        if (req.query.kioskId !== undefined || !legacyEnabled()) {
+            return res.status(200).json(await biometria.snapshot(req));
+        }
+        await exigirPermisosActuales(req, [["biometria", "sincronizar"]]);
         const sociosConHuella = await prisma.socio.findMany({
             where: {
                 status: { not: "bloqueado" },
@@ -417,26 +436,30 @@ export const sincronizarHuellas = async (req, res) => {
         });
 
         res.status(200).json({
-            success: true, message: "Sincronización de huellas exitosa",
+            success: true, message: "SincronizaciÃ³n de huellas exitosa",
             data: sociosConHuella, total: sociosConHuella.length
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: "Error interno al obtener los templates biométricos." });
+        if (biometricErrorResponse(res, error)) return;
+        res.status(500).json({ success: false, message: "Error interno al obtener los templates biomÃ©tricos." });
     }
 };
 
 // VALIDAR ASISTENCIA (Huella Dactilar Local)
 export const validarAsistenciaHuella = async (req, res) => {
     try {
-        const { socioId, codigoSocio, tipo = 'IN', kioskId, confidence = 100 } = req.body;
-
-        if (!socioId && !codigoSocio) {
-            return res.status(400).json({ success: false, message: "Debes enviar el ID o Código del socio reconocido." });
+        res.setHeader("Cache-Control", "no-store");
+        if (req.body?.eventProof !== undefined) {
+            return res.status(200).json(await biometria.recognize(req));
         }
+        if (!legacyEnabled()) throw new BiometricError(403, "EVENT_PROOF_REQUIRED", "Se requiere un evento firmado por el motor autorizado.");
+        await exigirPermisosActuales(req, [["asistencia", "crear"]]);
+        const socioWhere = validateLegacyAttendance(req.body);
+        const { tipo = 'IN', kioskId, confidence = null } = req.body;
 
         const socio = await prisma.socio.findFirst({
             where: {
-                OR: [ { id: parseInt(socioId) || undefined }, { codigoSocio: codigoSocio || undefined } ],
+                ...socioWhere,
                 status: { not: "bloqueado" },
                 isDeleted: false
             },
@@ -484,7 +507,7 @@ export const validarAsistenciaHuella = async (req, res) => {
                         codigo_socio: socio.codigoSocio,
                         fecha_fin_membresia: membresiaActual ? fechaUTCADiaStr(membresiaActual.fechaFin) : null
                     },
-                    sugerencia: "Por favor, renueva tu membresía en recepción."
+                    sugerencia: "Por favor, renueva tu membresÃ­a en recepciÃ³n."
                 }
             });
         }
@@ -503,7 +526,7 @@ export const validarAsistenciaHuella = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            message: `¡Bienvenido, ${socio.nombreCompleto.split(' ')[0]}!`,
+            message: `Â¡Bienvenido, ${socio.nombreCompleto.split(' ')[0]}!`,
             data: {
                 motivo_codigo: evaluacionMembresia.motivoCodigo,
                 motivo_texto: evaluacionMembresia.motivoTexto,
@@ -519,6 +542,7 @@ export const validarAsistenciaHuella = async (req, res) => {
         });
 
     } catch (error) {
+        if (biometricErrorResponse(res, error)) return;
         res.status(500).json({ success: false, message: "Error interno del servidor." });
     }
 };
@@ -529,7 +553,7 @@ export const marcarAsistenciaDenegada = async (req, res) => {
         const { id } = req.params;
         const { motivo_codigo, motivo_texto } = req.body;
 
-        if (isNaN(id)) return res.status(400).json({ error: "ID inválido." });
+        if (isNaN(id)) return res.status(400).json({ error: "ID invÃ¡lido." });
 
         const accesoDb = await prisma.acceso.findUnique({ where: { id: parseInt(id) }});
         if (!accesoDb) return res.status(404).json({ error: "Registro de acceso no encontrado." });
@@ -541,7 +565,7 @@ export const marcarAsistenciaDenegada = async (req, res) => {
                 validado: false,
                 estadoAcceso: 'denegado',
                 motivoCodigo: motivo_codigo || 'denegado_manual',
-                motivo: motivo_texto || 'Denegado manualmente desde recepción'
+                motivo: motivo_texto || 'Denegado manualmente desde recepciÃ³n'
             }
         });
 
@@ -551,3 +575,4 @@ export const marcarAsistenciaDenegada = async (req, res) => {
         res.status(500).json({ error: "Error interno al actualizar la asistencia." });
     }
 };
+

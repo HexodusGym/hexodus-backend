@@ -22,13 +22,13 @@ export const esUltimoDiaMembresia = (membresia, fecha = new Date()) => {
   return fechaUTCADiaStr(membresia.fechaFin) === fechaUTCADiaStr(fecha);
 };
 
-export const evaluarAccesoMembresia = (membresia, fecha = new Date()) => {
+export const evaluarAccesoMembresia = (membresia, fecha = new Date(), diasAviso = 0) => {
   if (!membresia) {
     return {
       permitido: false,
       estado: "sin_membresia",
       motivoCodigo: "sin_membresia",
-      motivoTexto: "Socio sin membresía asignada",
+      motivoTexto: "Socio sin membresÃ­a asignada",
     };
   }
 
@@ -37,7 +37,7 @@ export const evaluarAccesoMembresia = (membresia, fecha = new Date()) => {
       permitido: false,
       estado: "vencida",
       motivoCodigo: "membresia_vencida",
-      motivoTexto: "Membresía vencida",
+      motivoTexto: "MembresÃ­a vencida",
     };
   }
 
@@ -49,19 +49,24 @@ export const evaluarAccesoMembresia = (membresia, fecha = new Date()) => {
       permitido: false,
       estado: "sin_pago",
       motivoCodigo: "sin_pago",
-      motivoTexto: "Membresía sin pagar",
+      motivoTexto: "MembresÃ­a sin pagar",
     };
   }
 
-  const ultimoDia = esUltimoDiaMembresia(membresia, fecha);
+  // Comparar dÃ­as calendario en la zona del gimnasio, no periodos de 24 horas.
+  const diasRestantes = Math.round((Date.parse(fechaUTCADiaStr(membresia.fechaFin)) - Date.parse(fechaUTCADiaStr(fecha))) / 86400000);
+  const ultimoDia = diasRestantes === 0;
+  const proximoVencer = diasRestantes >= 0 && diasRestantes <= diasAviso;
 
   return {
     permitido: true,
-    estado: ultimoDia ? "proximo_vencer" : "vigente",
-    motivoCodigo: ultimoDia ? "proximo_vencer" : "ok",
+    estado: proximoVencer ? "proximo_vencer" : "vigente",
+    motivoCodigo: proximoVencer ? "proximo_vencer" : "ok",
     motivoTexto: ultimoDia
-      ? "Membresía vigente en su último día"
-      : "Membresía vigente",
+      ? "MembresÃ­a vigente en su Ãºltimo dÃ­a"
+      : proximoVencer
+      ? `Tu membresÃ­a vence en ${diasRestantes} ${diasRestantes === 1 ? "dÃ­a" : "dÃ­as"}`
+      : "MembresÃ­a vigente",
   };
 };
 
@@ -69,6 +74,7 @@ export const evaluarAccesoSocio = (
   socio,
   membresia,
   fecha = new Date(),
+  diasAviso = 0,
 ) => {
   if (!socio || socio.isDeleted) {
     return {
@@ -88,5 +94,6 @@ export const evaluarAccesoSocio = (
     };
   }
 
-  return evaluarAccesoMembresia(membresia, fecha);
+  return evaluarAccesoMembresia(membresia, fecha, diasAviso);
 };
+

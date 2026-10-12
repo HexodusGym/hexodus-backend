@@ -6,12 +6,17 @@ export const listarLogs = async (req, res) => {
         const limit = 50;
         const skip = (page - 1) * limit;
 
-        const where = {};
+        // Los comprobantes tÃ©cnicos biomÃ©tricos viven en la bitÃ¡cora para garantizar
+        // idempotencia, pero no deben aparecer como auditorÃ­a humana.
+        const where = { NOT: [
+            { id: { startsWith: "bio-event:" } },
+            { id: { startsWith: "bio-proof:" } },
+        ] };
         if (modulo) where.modulo = modulo;
         if (usuarioId) where.usuarioId = parseInt(usuarioId);
         if (accion) where.accion = accion;
         
-        // 🔥 CAMBIO AQUÍ: Usamos 'timestamp' en lugar de 'createdAt'
+        // ðŸ”¥ CAMBIO AQUÃ: Usamos 'timestamp' en lugar de 'createdAt'
         if (desde && hasta) {
             where.timestamp = {
                 gte: new Date(desde),
@@ -24,7 +29,7 @@ export const listarLogs = async (req, res) => {
                 where,
                 take: limit,
                 skip: skip,
-                // 🔥 CAMBIO AQUÍ: Usamos 'timestamp'
+                // ðŸ”¥ CAMBIO AQUÃ: Usamos 'timestamp'
                 orderBy: { timestamp: 'desc' }, 
                 include: {
                     usuario: { select: { username: true, nombreCompleto: true } }
@@ -44,6 +49,7 @@ export const listarLogs = async (req, res) => {
         });
     } catch (error) {
         console.error("Error en listarLogs:", error);
-        res.status(500).json({ success: false, error: "Error al obtener la bitácora" });
+        res.status(500).json({ success: false, error: "Error al obtener la bitÃ¡cora" });
     }
 };
+
