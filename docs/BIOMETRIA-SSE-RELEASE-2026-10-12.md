@@ -39,3 +39,5 @@ La configuraciÃ³n de conexiÃ³n de Prisma y el esquema de datos permanecen como e
 ## Despliegue
 
 El deployment de producción debe usar este commit de main y las rutas bajo /api. Este cambio documental no modifica código, Prisma ni la base de datos; se incluye para generar un nuevo deployment verificable.
+
+Deployment verification marker: 2026-10-12T09:18Z.
