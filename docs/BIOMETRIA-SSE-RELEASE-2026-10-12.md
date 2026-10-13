@@ -1,5 +1,7 @@
 ﻿# Entrega backend biométrica — 12 de octubre de 2026
 
+Esta nota describe la entrega del 12 de octubre. La actualización posterior de permisos por rol se documenta en [BIOMETRIA-PERMISOS-ROLES-2026-10-13.md](BIOMETRIA-PERMISOS-ROLES-2026-10-13.md).
+
 ## Qué se incorporó
 
 - Sesiones autorizadas para el motor local con `POST /api/asistencia/huellas/sesion`.
